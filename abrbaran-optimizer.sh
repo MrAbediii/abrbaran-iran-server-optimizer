@@ -11,7 +11,7 @@
 #   License: MIT   ·   https://abrbaranidc.ir
 # =============================================================================
 
-SCRIPT_VERSION="4.0.1"
+SCRIPT_VERSION="4.0.4"
 PROJECT_URL="https://github.com/MrAbediii/abrbaran-iran-server-optimizer"
 
 usage() {
@@ -161,6 +161,21 @@ ok()   { printf '  %s%s%s %s\n' "$C_OK"   "$S_OK"   "$C_RESET" "$*"; }
 warn() { printf '  %s%s%s %s\n' "$C_WARN" "$S_WARN" "$C_RESET" "$*"; }
 err()  { printf '  %s%s%s %s\n' "$C_ERR"  "$S_ERR"  "$C_RESET" "$*"; }
 note() { printf '    %s%s%s\n' "$C_GRAY" "$*" "$C_RESET"; }
+# راهنمای کوتاه پیش از هر پرسش (برای کسی که با آن بخش آشنا نیست)
+#   خط‌هایی که با «$ » شروع شوند دستورند و جدا و پررنگ چاپ می‌شوند. در حالت -y یا بدون ترمینال چاپ نمی‌شود.
+guide() { # عنوان خط...
+  [ "$AUTO_YES" = true ] && return 0
+  ( : </dev/tty ) 2>/dev/null || return 0
+  local title="$1" l; shift
+  printf '\n  %s%s راهنما · %s%s\n' "$C_ACC" "$S_INFO" "$title" "$C_RESET"
+  for l in "$@"; do
+    case "$l" in
+      '$ '*) printf '        %s%s%s\n' "$C_BOLD" "${l#\$ }" "$C_RESET" ;;
+      '! '*) printf '    %s%s %s%s\n' "$C_WARN" "$S_WARN" "${l#! }" "$C_RESET" ;;
+      *)     printf '    %s• %s%s\n' "$C_GRAY" "$l" "$C_RESET" ;;
+    esac
+  done
+}
 blank() { printf '\n'; }
 
 STEP_NO=0
@@ -221,13 +236,25 @@ progress_clear() { [ "$IS_TTY" = true ] && printf '\r\033[K' >&3; return 0; }
 #   SPIN_PROGRESS_FN : تابعی که "cur|total|برچسب" برمی‌گرداند → نوار درصدی
 #   SPIN_SUFFIX_FN   : تابعی که فقط یک برچسب کوتاه برمی‌گرداند → اسپینر ساده
 # پس از پایان، یک خط ماندگار (✔/✘ + زمان) چاپ می‌شود تا در خروجی و لاگ بماند.
+# نگهبان: اگر خروجی یک عملیات ۶۰ ثانیه ثابت ماند، وضعیت فرایندها را در لاگ می‌نویسد و فرایندهای apt/dpkgِ «متوقف‌شده» (حالت T) را ادامه می‌دهد
+spin_unstick() {
+  local st x
+  st=$(ps -eo pid=,stat=,comm= 2>/dev/null | awk '$2 ~ /^T/ && $3 ~ /^(apt|apt-get|dpkg|timeout|dash|sh|bash|perl|debconf.*|needrestart|mandb|man-db)$/ {print $1":"$3}')
+  { echo "[watchdog] $(date +%T) خروجی ۶۰ ثانیه ثابت ماند؛ فرایندها:"
+    ps -eo pid,ppid,stat,wchan:22,cmd --forest 2>/dev/null | grep -E 'apt|dpkg|timeout|abrbaran|man' | grep -v grep; } >> "$LOGFILE" 2>/dev/null
+  if [ -n "$st" ]; then
+    for x in $st; do kill -CONT "${x%%:*}" 2>/dev/null; done
+    echo "[watchdog] فرایندهای متوقف‌شده ادامه یافتند: $st" >> "$LOGFILE" 2>/dev/null
+  fi
+  return 0
+}
 SPIN_OUT=""
 SPIN_SUFFIX_FN=""
 SPIN_PROGRESS_FN=""
 SPIN_QUIET=false
 with_spinner() {
   local msg="$1"; shift
-  local pid i=0 start=$SECONDS rc suffix="" last=-100 prog cur tot pct fill bar="" ibar pos el
+  local pid i=0 start=$SECONDS rc suffix="" last=-100 prog cur tot pct fill bar="" ibar pos el sz sz_prev=-1 stall_at=$SECONDS healed=false
   SPIN_OUT=$(mktemp "$TMPD/spin.XXXXXX")
   "$@" >"$SPIN_OUT" 2>&1 &
   pid=$!
@@ -235,6 +262,9 @@ with_spinner() {
     while kill -0 "$pid" 2>/dev/null; do
       if [ $((SECONDS - last)) -ge 1 ]; then
         last=$SECONDS; bar=""
+        sz=$(stat -c %s "$SPIN_OUT" 2>/dev/null || echo 0)
+        if [ "$sz" != "$sz_prev" ]; then sz_prev=$sz; stall_at=$SECONDS; healed=false
+        elif [ "$healed" = false ] && [ $((SECONDS - stall_at)) -ge 60 ]; then healed=true; spin_unstick; fi
         if [ -n "$SPIN_PROGRESS_FN" ]; then
           prog=$("$SPIN_PROGRESS_FN" "$SPIN_OUT" 2>/dev/null)
           IFS='|' read -r cur tot suffix <<<"$prog"
@@ -509,10 +539,10 @@ pkg_install() { # نصب بی‌صدا با timeout (تا مخزن کند/خرا
   [ "$DRY_RUN" = true ] && return 1
   case "$PKG_MGR" in
     apt)
-      if timeout 120 "${APT_ENV[@]}" apt-get install -y -qq -o DPkg::Lock::Timeout=60 "$@" >/dev/null 2>&1; then return 0; fi
+      if timeout --foreground 120 "${APT_ENV[@]}" apt-get -o Dpkg::Use-Pty=0 install -y -qq -o DPkg::Lock::Timeout=60 "$@" >/dev/null 2>&1; then return 0; fi
       if apt_lists_empty; then   # ایمیج‌های تازه معمولاً فهرست بسته ندارند
-        timeout 90 "${APT_ENV[@]}" apt-get update -qq -o Acquire::Retries=0 >/dev/null 2>&1
-        timeout 120 "${APT_ENV[@]}" apt-get install -y -qq -o DPkg::Lock::Timeout=60 "$@" >/dev/null 2>&1; return
+        timeout --foreground 90 "${APT_ENV[@]}" apt-get -o Dpkg::Use-Pty=0 update -qq -o Acquire::Retries=0 >/dev/null 2>&1
+        timeout --foreground 120 "${APT_ENV[@]}" apt-get -o Dpkg::Use-Pty=0 install -y -qq -o DPkg::Lock::Timeout=60 "$@" >/dev/null 2>&1; return
       fi
       return 1 ;;
     dnf)    timeout 120 dnf install -y "$@" >/dev/null 2>&1 ;;
@@ -1175,7 +1205,8 @@ apt_rewrite() { # newbase replace_security(0/1) family codename
   return $changed
 }
 
-apt_run() { local t="$1"; shift; timeout "$t" "${APT_ENV[@]}" apt-get "$@"; }
+# --foreground + stdin تهی + بدون pty: apt/dpkg هرگز با سیگنال‌های ترمینال (SIGTTIN/SIGTTOU) متوقف نمی‌شود
+apt_run() { local t="$1"; shift; timeout --foreground "$t" "${APT_ENV[@]}" apt-get -o Dpkg::Use-Pty=0 "$@" </dev/null; }
 
 UPG_TOTAL=0
 APT_SRC_TOTAL=0
@@ -1208,8 +1239,24 @@ apt_update_progress() { # cur|total|برچسب
   printf '%s|%s|%s' "${n:-0}" "${APT_SRC_TOTAL:-0}" "${h:0:30}"
 }
 
+# پیشرفت «کلِ» عملیات از خروجی خودِ apt (-o APT::Status-Fd=1): دریافت ۰–۴۰٪، نصب ۴۰–۱۰۰٪
+APT_STATUS_OPT=(-o APT::Status-Fd=1)
+apt_status_progress() { # cur|100|برچسب  (کد 1 = apt خط وضعیت نداده)
+  local f="$1" pm dl pct msg
+  pm=$(grep -a '^pmstatus:' "$f" 2>/dev/null | tail -n1)
+  dl=$(grep -a '^dlstatus:' "$f" 2>/dev/null | tail -n1)
+  if [ -n "$pm" ]; then
+    IFS=: read -r _ _ pct msg <<<"$pm"; pct=${pct%.*}; pct=${pct:-0}
+    printf '%s|100|%s' "$((40 + pct * 60 / 100))" "${msg:0:34}"
+  elif [ -n "$dl" ]; then
+    IFS=: read -r _ _ pct msg <<<"$dl"; pct=${pct%.*}; pct=${pct:-0}
+    printf '%s|100|%s' "$((pct * 40 / 100))" "دریافت: ${msg:0:26}"
+  else return 1; fi
+}
+
 apt_upgrade_progress() { # cur|total|مرحله + نام بسته
   local f="$1" g u s last stage="آماده‌سازی" pkg=""
+  apt_status_progress "$f" && return 0
   g=$(grep -c '^Get:' "$f" 2>/dev/null); u=$(grep -c '^Unpacking' "$f" 2>/dev/null); s=$(grep -c '^Setting up' "$f" 2>/dev/null)
   last=$(grep -E '^(Get:|Unpacking |Setting up )' "$f" 2>/dev/null | tail -n1)
   case "$last" in
@@ -1872,10 +1919,11 @@ update_upgrade_apt() {
   attempt=0
   local log="$TMPD/apt-upgrade.log"
   while :; do
+    apt_fast_triggers
     UPG_TOTAL=$(apt_run 60 -s upgrade 2>/dev/null | grep -c '^Inst')
     [ "$UPG_TOTAL" -gt 0 ] && info "تعداد بسته‌های قابل ارتقا: ${C_BOLD}${UPG_TOTAL}${C_RESET}"
     SPIN_PROGRESS_FN=apt_upgrade_progress
-    with_spinner "مرحله ۲/۲ · ارتقای بسته‌ها" apt_run 3000 upgrade -y -o DPkg::Lock::Timeout=300 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold -o Acquire::Retries=2
+    with_spinner "مرحله ۲/۲ · ارتقای بسته‌ها" apt_run 3000 upgrade -y "${APT_STATUS_OPT[@]}" -o DPkg::Lock::Timeout=300 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold -o Acquire::Retries=2
     rc=$?
     SPIN_PROGRESS_FN=""
     cp "$SPIN_OUT" "$log"; cat "$log" >> "$LOGFILE"
@@ -2012,6 +2060,7 @@ pkg_progress() { # cur|total|برچسب
   local f="$1" g u s last stage="" pkg="" cur n m
   case "$PKG_MGR" in
     apt)
+      apt_status_progress "$f" && return 0
       g=$(grep -c '^Get:' "$f" 2>/dev/null); u=$(grep -c '^Unpacking' "$f" 2>/dev/null); s=$(grep -c '^Setting up' "$f" 2>/dev/null)
       last=$(grep -E '^(Get:|Unpacking |Setting up |Processing triggers)' "$f" 2>/dev/null | tail -n1)
       case "$last" in
@@ -2193,11 +2242,18 @@ pkg_installed() {
 pkg_has_candidate() { # فقط برای apt
   apt-cache policy "$1" 2>/dev/null | awk '/Candidate:/{ if ($2 != "(none)") f=1 } END{ exit !f }'
 }
+apt_fast_triggers() { # ساخت پایگاه man در هر نصب گاهی چند دقیقه طول می‌کشد؛ man-db.timer خودش بعداً انجام می‌دهد
+  [ "$DRY_RUN" = true ] && return 0
+  command -v debconf-set-selections >/dev/null 2>&1 && dpkg -s man-db >/dev/null 2>&1 || return 0
+  echo "man-db man-db/auto-update boolean false" | debconf-set-selections 2>/dev/null
+  return 0
+}
 tools_install_run() {
   case "$PKG_MGR" in
     apt)
+      apt_fast_triggers
       apt_lists_empty && apt_run 120 update -qq >/dev/null 2>&1
-      apt_run 900 install -y --no-install-recommends -o Dpkg::Use-Pty=0 -o DPkg::Lock::Timeout=60 "$@" ;;
+      apt_run 900 install -y --no-install-recommends "${APT_STATUS_OPT[@]}" -o Dpkg::Use-Pty=0 -o DPkg::Lock::Timeout=60 "$@" ;;
     dnf)    timeout 900 dnf install -y "$@" ;;
     yum)    timeout 900 yum install -y "$@" ;;
     zypper) timeout 900 zypper --non-interactive install "$@" ;;
@@ -2419,7 +2475,7 @@ docker_install_apt() { # base code
   chmod a+r "$key"
   echo "deb [arch=$ARCH_DEB signed-by=$key] $base/linux/$DOCKER_FLAVOR $code stable" > "$lst"
   apt_run 150 update -qq -o Dir::Etc::sourcelist="sources.list.d/docker.list" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0" || { echo "apt update مخزن Docker ناموفق"; return 13; }
-  apt_run 1200 install -y -o DPkg::Lock::Timeout=60 docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin || return 14
+  apt_run 1200 install -y "${APT_STATUS_OPT[@]}" -o DPkg::Lock::Timeout=60 docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin || return 14
 }
 docker_install_rpm() { # base ver
   local base="$1" ver="$2"
@@ -2636,6 +2692,12 @@ setup_docker() {
     fi
     if ! confirm "میرور رجیستری Docker (ایران/جهان) تست و تنظیم شود؟" "" y; then info "رد شد."; set_st DOCKER skip "رد شد"; return; fi
   else
+    guide "Docker" \
+      "Docker برنامه‌ها را داخل «کانتینر» جدا از سیستم اجرا می‌کند؛ برای راه‌اندازی سریع سرویس‌ها (پایگاه‌داده، پنل، ربات) کاربرد دارد." \
+      "بعد از نصب، تست:" '$ docker run --rm hello-world' \
+      "اجرای فایل docker-compose در پوشه‌ی پروژه:" '$ docker compose up -d' \
+      "مشاهده‌ی کانتینرهای فعال:" '$ docker ps' \
+      "! پورتی که با Docker باز می‌کنید (مثل 8080:80) از فایروال ufw رد می‌شود. برای خصوصی نگه داشتن، 127.0.0.1:8080:80 بنویسید."
     note "Docker نصب نیست. docker.com از ایران معمولاً مسدود است؛ اسکریپت از میرورهای سالم نصب می‌کند و کلید GPG را راستی‌آزمایی می‌کند."
     if ! confirm "Docker Engine + Compose نصب شود؟" "$([ "$DO_DOCKER" = true ] && echo yes)" n; then
       info "رد شد. (برای نصب خودکار: --docker)"; set_st DOCKER skip "رد شد"; return
@@ -2667,6 +2729,11 @@ ssh_ports() {
   echo "${p:-22}"
 }
 ssh_tune_and_audit() {
+  guide "تنظیمات SSH" \
+    "فقط پارامترهای ایمن تغییر می‌کنند: زنده نگه‌داشتن اتصال (keep-alive)، مهلت ورود و حداکثر تلاش ناموفق." \
+    "رمز، کاربر root و پورت SSH تغییر نمی‌کند و اتصال فعلی شما قطع نمی‌شود؛ پیش از اعمال، پیکربندی با sshd -t آزمایش می‌شود." \
+    "! اگر خودتان رمز را غیرفعال می‌کنید (PasswordAuthentication no)، قبلش مطمئن شوید ورود با کلید کار می‌کند؛ وگرنه از سرور بیرون می‌مانید." \
+    "ساخت کلید روی کامپیوتر خودتان و انتقال آن:" '$ ssh-keygen -t ed25519' '$ ssh-copy-id user@SERVER_IP'
   ssh_find || { note "sshd نصب نیست؛ رد شد."; set_st SSHT skip "sshd نصب نیست"; return; }
   local main=/etc/ssh/sshd_config conf=/etc/ssh/sshd_config.d/99-abrbaran.conf eff want kv key val cur lines="" total=0 changed=0 eff2 took=0
   if ! grep -qsE '^[[:space:]]*Include[[:space:]]+/etc/ssh/sshd_config\.d/' "$main"; then
@@ -2731,6 +2798,14 @@ firewall_setup() {
   sp=$(ssh_ports)
   plan_t="$sp"; for p in $(listening_public_ports tcp) 80 443; do case " $plan_t " in *" $p "*) ;; *) plan_t+=" $p" ;; esac; done
   for p in $(listening_public_ports udp); do case "$p" in 68|546|5353|323) continue ;; esac; plan_u+=" $p"; done
+  guide "فایروال (UFW)" \
+    "فایروال همه‌ی ورودی‌ها را می‌بندد و فقط پورت‌های فهرست‌شده‌ی زیر باز می‌مانند. خروجی سرور آزاد است." \
+    "! اگر پورت SSH شما در فهرست نباشد، ارتباط قطع می‌شود. اسکریپت پورت SSH فعلی را خودش باز می‌کند و بعد از فعال‌شدن ۴۵ ثانیه فرصت می‌دهد Enter بزنید؛ اگر ارتباطتان قطع شود فایروال خودکار خاموش می‌شود." \
+    "هر سرویسی که بعداً نصب کنید (مثلاً پنل روی پورت 8080) باید دستی باز شود:" '$ ufw allow 8080/tcp' \
+    "دیدن قوانین فعلی:" '$ ufw status numbered' \
+    "خاموش کردن اضطراری:" '$ ufw disable' \
+    "اگر در پنل دیتاسنتر یا ابر هم فایروال دارید، پورت‌ها آنجا هم باید باز باشد." \
+    "مطمئن نیستید؟ همین الان n بزنید؛ بعداً با --firewall می‌شود فعالش کرد."
   note "پورت‌های SSH (با محدودیت نرخ): ${sp}"
   note "پورت‌های TCP که باز می‌مانند: $(echo "$plan_t" | tr -s ' ')"
   [ -n "$plan_u" ] && note "پورت‌های UDP که باز می‌مانند:${plan_u}"
@@ -2760,6 +2835,12 @@ firewall_setup() {
 
 fail2ban_setup() {
   local ports cip="" conf=/etc/fail2ban/jail.d/abrbaran.local backend="auto" ign
+  guide "Fail2ban" \
+    "رباتها شبانه‌روز رمز SSH را حدس می‌زنند. Fail2ban لاگ را می‌خواند و IP کسی را که ۵ بار پشت‌سرهم رمز غلط زد، ۱ ساعت مسدود می‌کند." \
+    "IP فعلی شما به‌طور خودکار در لیست سفید است، ولی اگر خودتان چند بار رمز را اشتباه بزنید و از IP دیگری وصل شوید ممکن است موقتاً مسدود شوید." \
+    "وضعیت و IPهای مسدودشده:" '$ fail2ban-client status sshd' \
+    "آزاد کردن یک IP:" '$ fail2ban-client set sshd unbanip 1.2.3.4' \
+    "امن و بدون قطع ارتباط فعلی؛ برای اطمینان بیشتر ورود با کلید SSH را فعال کنید."
   if ! confirm "Fail2ban (مسدودسازی خودکار حملات brute-force به SSH) نصب و فعال شود؟" "$([ "$DO_FAIL2BAN" = true ] && echo yes)" n; then
     info "رد شد. (فعال‌سازی خودکار: --fail2ban)"; set_st F2B skip "رد شد"; return
   fi
@@ -2973,6 +3054,13 @@ main() {
 
   if mod_on tools; then
     step "ابزارهای کاربردی سرور"
+    guide "ابزارهای کاربردی" \
+      "اینها برنامه‌های روزمره‌ی مدیریت سرورند و هیچ سرویس در حال اجرایی را تغییر نمی‌دهند؛ نصبشان بی‌خطر است." \
+      "مانیتور زنده‌ی پردازنده و رم:" '$ htop' \
+      "نشست ماندگار (با قطع SSH کارتان نمی‌پرد):" '$ tmux' \
+      "پیدا کردن پرحجم‌ترین پوشه‌ها:" '$ ncdu /' \
+      "خواندن و فیلتر خروجی JSON:" '$ jq . file.json' \
+      "بررسی مسیر و افت شبکه تا یک مقصد:" '$ mtr 8.8.8.8'
     set_essentials && print_pkg_list "ابزارهای کاربردی (${#ESSENTIALS[@]} مورد):" "${ESSENTIALS[@]}"
     if confirm "همه‌ی ابزارهای بالا نصب شوند؟" "$xf" y; then install_essentials
     else info "رد شد."; set_st TOOLS skip "رد شد"; fi
@@ -2980,6 +3068,12 @@ main() {
 
   if mod_on system; then
     step "منابع سیستم (سوآپ، limits، journald، TRIM)"
+    guide "منابع سیستم" \
+      "سوآپ: بخشی از دیسک به‌عنوان رم کمکی؛ جلوی کشته‌شدن برنامه‌ها هنگام کمبود رم را می‌گیرد (فقط اگر سوآپ ندارید و دیسک کافی است)." \
+      "سقف فایل‌های باز: برای وب‌سرور و دیتابیس پرترافیک لازم است." \
+      "محدودسازی لاگ: جلوی پر شدن دیسک با لاگ سیستم را می‌گیرد." \
+      "TRIM: برای SSD/NVMe سرعت و عمر دیسک را بهتر می‌کند." \
+      "هیچ‌کدام سرویس را قطع نمی‌کند و با گزینه‌ی بازگردانی برمی‌گردد:" '$ bash abrbaran-optimizer.sh --restore'
     if confirm "منابع سیستم بهینه شود؟ (سوآپ در صورت نبودن، افزایش سقف فایل‌ها، محدودسازی لاگ، TRIM)" "$xf" y; then optimize_system_resources
     else info "رد شد."; set_st SYSTEM skip "رد شد"; fi
   fi
@@ -3008,6 +3102,10 @@ main() {
 
   if mod_on update; then
     step "آپدیت/آپگرید سیستم‌عامل"
+    guide "آپدیت سیستم" \
+      "بسته‌های سیستم به آخرین نسخه‌ی امنیتی می‌روند؛ بسته به تعداد بسته‌ها و سرعت میرور چند دقیقه طول می‌کشد." \
+      "! وسط کار Ctrl+C نزنید و نشست SSH را نبندید؛ اگر قطع شود بهتر است درون tmux اجرا کنید." \
+      "اگر کرنل یا کتابخانه‌ی اصلی عوض شود ریبوت لازم است؛ فقط با تایید شما و با ۶۰ ثانیه تاخیر انجام می‌شود (لغو: shutdown -c)."
     if confirm "سیستم‌عامل آپدیت/آپگرید شود؟" "$uf" y; then update_upgrade_system
     else info "رد شد."; set_st UPDATE skip "رد شد"; fi
   fi
