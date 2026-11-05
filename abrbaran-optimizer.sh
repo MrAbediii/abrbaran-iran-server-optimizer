@@ -12,7 +12,7 @@
 # =============================================================================
 
 SCRIPT_VERSION="4.0.0"
-PROJECT_URL="https://github.com/aliabedi94/abrbaran-iran-server-optimizer"
+PROJECT_URL="https://github.com/MrAbediii/abrbaran-iran-server-optimizer"
 
 usage() {
 cat <<'EOF'
