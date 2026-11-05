@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax check
+        run: |
+          bash -n abrbaran-optimizer.sh
+          bash -n tests/run.sh
+      - name: ShellCheck (errors only)
+        run: shellcheck -S error -s bash abrbaran-optimizer.sh tests/run.sh
+      - name: Unit tests
+        run: bash tests/run.sh
+
+  dry-run:
+    name: dry-run on ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["ubuntu:22.04", "ubuntu:24.04", "debian:12", "rockylinux:9", "almalinux:9", "fedora:41"]
+    container: ${{ matrix.image }}
+    steps:
+      - name: Install prerequisites
+        run: |
+          if command -v apt-get >/dev/null; then apt-get update -qq && apt-get install -y -qq curl ca-certificates; \
+          else (dnf install -y -q curl ca-certificates || yum install -y -q curl ca-certificates); fi
+      - uses: actions/checkout@v4
+      - name: Dry run (no changes are applied)
+        run: bash abrbaran-optimizer.sh --dry-run --plain -y --skip-speedtest --skip-update --skip-github
