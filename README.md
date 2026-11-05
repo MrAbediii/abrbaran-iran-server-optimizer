@@ -166,11 +166,13 @@ sudo bash abrbaran-optimizer.sh --restore                # بازگردانی ه
 
 ## مشارکت و امنیت
 
-Pull Request و Issue خوش‌آمد است؛ [CONTRIBUTING.md](CONTRIBUTING.md). گزارش آسیب‌پذیری: [SECURITY.md](SECURITY.md). اگر پروژه به کارتان آمد، با ⭐ از آن حمایت کنید.
+- مشارکت: درخواست ادغام (Pull Request) و گزارش مشکل (Issue) خوش‌آمد است؛ [راهنمای مشارکت](https://github.com/MrAbediii/abrbaran-iran-server-optimizer/blob/main/CONTRIBUTING.md)
+- امنیت: برای گزارش آسیب‌پذیری [سیاست امنیتی](https://github.com/MrAbediii/abrbaran-iran-server-optimizer/blob/main/SECURITY.md) را ببینید
+- حمایت: اگر پروژه به کارتان آمد، به آن ستاره ⭐ بدهید
 
 ## مجوز
 
-[MIT](LICENSE) — استفاده‌ی آزاد، شخصی و تجاری.
+استفاده‌ی آزاد، شخصی و تجاری با مجوز [MIT](LICENSE).
 
 <p align="center">ساخته‌شده با ❤️ توسط <a href="https://abrbaranidc.ir">ابر باران (ABR BARAN IDC)</a><br>
 <sub>کلیدواژه‌ها: بهینه ساز سرور ایران · میرور اوبونتو ایران · میرور دبیان ایران · تغییر DNS سرور · نصب داکر در ایران · فعال سازی BBR · آپدیت اوبونتو ایران · ابر باران</sub></p>
