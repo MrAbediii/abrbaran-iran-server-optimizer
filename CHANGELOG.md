@@ -2,6 +2,16 @@
 
 All notable changes are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.0.1] — 2026-11-05
+
+### Added
+- Real percentage progress bar for package installs (apt: download/unpack/setup/triggers; dnf/yum: n/m), Docker installation and swap creation.
+- Animated "working" bar for every other long step (previously a plain spinner).
+
+### Changed
+- Tools step now lists **all** packages before asking, on its own line (no more truncated "..." list and no RTL/LTR text mix-ups).
+- Package installs use `--no-install-recommends` and show the current dpkg trigger, so slow triggers are visible instead of looking like a hang.
+
 ## [4.0.0] — 2026-11-05
 
 ### Added
