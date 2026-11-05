@@ -1,0 +1,23 @@
+# ABR BARAN Iran Server Optimizer (بهینه‌ساز سرور ایران — ابر باران)
+
+> A free, open-source, single-file Bash tool that optimizes Linux servers located in Iran: it switches APT/DNF mirrors to fast Iranian mirrors, sets DNS, tunes kernel/network (BBR, sysctl), creates swap, installs essential tools, Docker, UFW and fail2ban, and hardens SSH, with progress bars and safety guides. Made by ABR BARAN IDC (abrbaranidc.ir). License: MIT.
+
+Supported systems: Ubuntu, Debian, AlmaLinux, Rocky Linux, CentOS, Fedora (bash 4.2+, run as root).
+
+Install and run:
+
+    curl -fsSL https://raw.githubusercontent.com/MrAbediii/abrbaran-iran-server-optimizer/main/abrbaran-optimizer.sh -o abrbaran-optimizer.sh && sudo bash abrbaran-optimizer.sh
+
+## Docs
+- [README (فارسی)](https://github.com/MrAbediii/abrbaran-iran-server-optimizer/blob/main/README.md): features, install, usage, FAQ in Persian
+- [README (English)](https://github.com/MrAbediii/abrbaran-iran-server-optimizer/blob/main/README.en.md): same in English
+- [Changelog](https://github.com/MrAbediii/abrbaran-iran-server-optimizer/blob/main/CHANGELOG.md)
+- [Security policy](https://github.com/MrAbediii/abrbaran-iran-server-optimizer/blob/main/SECURITY.md)
+- [Contributing](https://github.com/MrAbediii/abrbaran-iran-server-optimizer/blob/main/CONTRIBUTING.md)
+
+## Source
+- [Script](https://github.com/MrAbediii/abrbaran-iran-server-optimizer/blob/main/abrbaran-optimizer.sh)
+- [Tests](https://github.com/MrAbediii/abrbaran-iran-server-optimizer/blob/main/tests/run.sh)
+
+## Optional
+- [ABR BARAN IDC](https://abrbaranidc.ir): hosting and data center company behind the project
