@@ -4,31 +4,48 @@
 
 <p align="center">
 <b>ABR BARAN · Iran Server Optimizer</b><br>
-یک اسکریپت هوشمند، امن و زیبا برای آماده‌سازی سرور لینوکس در ایران:<br>
-DNS · میرور بسته‌ها · Docker · BBR · کرنل · امنیت · آپدیت — همه با تایید واقعی و بازگردانی کامل.
+اسکریپت متن‌باز و امن برای راه‌اندازی و بهینه‌سازی سرور لینوکس (اوبونتو، دبیان، راکی، آلما) در ایران:<br>
+<b>تنظیم DNS ایرانی · میرور ایرانی apt و yum · نصب Docker · فعال‌سازی BBR · امنیت SSH، فایروال و Fail2ban · آپدیت امن</b>
 </p>
 
 <p align="center">
-<a href="https://github.com/aliabedi94/abrbaran-iran-server-optimizer/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/aliabedi94/abrbaran-iran-server-optimizer/actions/workflows/ci.yml/badge.svg"></a>
+<a href="https://github.com/MrAbediii/abrbaran-iran-server-optimizer/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/MrAbediii/abrbaran-iran-server-optimizer/actions/workflows/ci.yml/badge.svg"></a>
 <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
 <img alt="Shell: bash" src="https://img.shields.io/badge/shell-bash-4EAA25.svg">
-<img alt="Ubuntu · Debian · RHEL family" src="https://img.shields.io/badge/Ubuntu%20·%20Debian%20·%20Rocky%20·%20Alma%20·%20Fedora-supported-informational.svg">
+<img alt="Ubuntu · Debian · Rocky · Alma · Fedora" src="https://img.shields.io/badge/Ubuntu%20·%20Debian%20·%20Rocky%20·%20Alma%20·%20Fedora-supported-informational.svg">
+<a href="https://abrbaranidc.ir"><img alt="ABR BARAN IDC" src="https://img.shields.io/badge/by-ABR%20BARAN%20IDC-0ea5e9.svg"></a>
 </p>
 
-<p align="center"><a href="README.en.md">English README</a></p>
+<p align="center"><a href="README.en.md">English README</a> · <a href="https://abrbaranidc.ir">abrbaranidc.ir</a></p>
 
 ---
 
-## چرا این پروژه؟
+## خلاصه در یک نگاه
 
-روی سرورهای ایران، `apt update` کند یا ناموفق می‌شود، `docker pull` و `download.docker.com` در دسترس نیستند، DNS پیش‌فرض داده‌ی غلط یا صفحه‌ی مسدودسازی می‌دهد و GitHub گاهی باز نمی‌شود. اسکریپت‌های عمومی «بهینه‌ساز لینوکس» این‌ها را نمی‌شناسند و بیشتر تنظیمات را **کورکورانه** اعمال می‌کنند.
+با **یک دستور**، سرور لینوکس شما در ایران آماده‌ی کار می‌شود: سریع‌ترین **میرور ایرانی اوبونتو و دبیان** انتخاب می‌شود، **DNS** درست تنظیم می‌شود، **Docker** از میرور سالم نصب می‌شود، **BBR** و تنظیمات کرنل اعمال می‌شود و امنیت پایه برقرار می‌گردد. هر تغییر **اندازه‌گیری، تایید و در صورت لزوم برگردانده** می‌شود.
 
-این پروژه برعکس کار می‌کند: **اول اندازه می‌گیرد، بعد تصمیم می‌گیرد، بعد تایید می‌کند، و اگر خراب شد برمی‌گرداند.**
+```bash
+curl -fsSL https://raw.githubusercontent.com/MrAbediii/abrbaran-iran-server-optimizer/main/abrbaran-optimizer.sh -o abrbaran-optimizer.sh \
+  && sudo bash abrbaran-optimizer.sh
+```
+
+## این پروژه چه مشکل‌هایی را حل می‌کند؟
+
+اگر روی سرور ایران با این مشکلات روبه‌رو شده‌اید، این ابزار برای شماست:
+
+| مشکل رایج | راه‌حل در این پروژه |
+|---|---|
+| `apt update` کند است یا خطای `Temporary failure resolving` / `Failed to fetch` می‌دهد | تست موازیِ حدود ۹۰ میرور ایرانی و خارجی، انتخاب بر اساس **سرعت واقعی دانلود** و **failover خودکار** |
+| `download.docker.com` یا `docker pull` از ایران باز نمی‌شود | نصب Docker از **میرورهای سالم** با راستی‌آزمایی کلید GPG و تنظیم **میرور رجیستری Docker Hub** |
+| DNS سرور کند است یا صفحه‌ی مسدودسازی (`10.10.34.x`) برمی‌گرداند | تست ۲۵ DNS ایرانی و خارجی (شکن، الکترو، بگذر، رادار، Cloudflare، Google، Quad9، …) و حذف پاسخ‌های جعلی |
+| دسترسی به GitHub قطع یا کند است | بررسی ۴ دامنه‌ی GitHub و مقایسه‌ی قبل و بعد از تغییر DNS |
+| اوبونتو ۲۶.۰۴ یا دبیان ۱۳ میرور سازگار ندارد | تشخیص خودکار suite و مسیر مخزن، پشتیبانی از `deb822 (.sources)` |
+| نگرانی از خراب شدن سرور با اسکریپت‌های «بهینه‌ساز» | پشتیبان خودکار، `--dry-run`، تایید هر مرحله و `--restore` |
 
 ## نصب و اجرا
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/aliabedi94/abrbaran-iran-server-optimizer/main/abrbaran-optimizer.sh -o abrbaran-optimizer.sh \
+curl -fsSL https://raw.githubusercontent.com/MrAbediii/abrbaran-iran-server-optimizer/main/abrbaran-optimizer.sh -o abrbaran-optimizer.sh \
   && sudo bash abrbaran-optimizer.sh
 ```
 
@@ -69,9 +86,9 @@ sudo bash abrbaran-optimizer.sh --restore                # بازگردانی ه
 
 | مرحله | کار | نکته‌ی هوشمند |
 |---|---|---|
-| **DNS** | تست ۲۵ سرور DNS ایرانی و خارجی (Shecan، Electro، Begzar، RadarGame، 403، Cloudflare، Google، Quad9، ControlD، …) | پاسخ‌های جعلی/صفحه‌ی مسدودسازی (`10.10.34.x`) شناسایی و حذف می‌شود؛ تایید نهایی با resolve واقعی؛ در صورت شکست، برگشت خودکار |
-| **مخزن / میرور** | تست موازیِ ~۹۰ میرور Ubuntu/Debian/RPM (ایرانی + جهانی) | سرعت واقعی دانلود ۳ ایرانی + ۳ خارجی اندازه‌گیری می‌شود؛ مسیر درست میرورهایی که مسیرشان را نمی‌دانیم خودکار کشف می‌شود؛ **failover**: اگر وسط `apt update/upgrade` میرور خراب شد، به بهترین میرور بعدی (نه قبلی!) می‌رود |
-| **Docker** | نصب Docker Engine + Compose از میرورهای سالم و تنظیم میرور رجیستری Docker Hub | `download.docker.com` از ایران بسته است؛ **اثر انگشت کلید GPG** با کلید رسمی مقایسه می‌شود (میرور نمی‌تواند بسته‌ی دستکاری‌شده بدهد)؛ `daemon.json` ادغام می‌شود نه بازنویسی؛ لاگ‌چرخانی پیش‌فرض اضافه می‌شود؛ با یک `docker pull` واقعی تایید می‌شود |
+| **DNS** | تست ۲۵ سرور DNS ایرانی و خارجی | پاسخ‌های جعلی/صفحه‌ی مسدودسازی شناسایی و حذف می‌شود؛ تایید نهایی با resolve واقعی؛ در صورت شکست، برگشت خودکار |
+| **مخزن / میرور** | تست موازیِ حدود ۹۰ میرور Ubuntu/Debian/RPM (ایرانی + جهانی) | سرعت واقعی دانلود ۳ ایرانی + ۳ خارجی اندازه‌گیری می‌شود؛ مسیر مخزن خودکار کشف می‌شود؛ **failover**: اگر وسط `apt update/upgrade` میرور خراب شد، به بهترین میرور بعدی (نه قبلی!) می‌رود |
+| **Docker** | نصب Docker Engine + Compose و تنظیم میرور رجیستری Docker Hub | **اثر انگشت کلید GPG** با کلید رسمی مقایسه می‌شود؛ `daemon.json` ادغام می‌شود نه بازنویسی؛ لاگ‌چرخانی پیش‌فرض؛ تایید با یک `docker pull` واقعی |
 | **BBR** | فعال‌سازی BBR | سرعت شبکه قبل و بعد اندازه‌گیری می‌شود؛ اگر بدتر شد، خودکار برمی‌گردد |
 | **sysctl** | ۱۵+ پارامتر شبکه/کرنل متناسب با رم | فقط مقدارهایی که واقعاً باید تغییر کنند؛ مقدار قبلی نمایش داده می‌شود |
 | **ابزارها** | git، htop، tmux، jq، ncdu، rsync، … | فقط بسته‌های موجود و نصب‌نشده |
@@ -82,6 +99,16 @@ sudo bash abrbaran-optimizer.sh --restore                # بازگردانی ه
 | **GitHub** | بررسی دسترسی به ۴ دامنه‌ی GitHub | مقایسه‌ی قبل/بعد از تغییر DNS |
 | **زمان** | منطقه‌ی زمانی تهران + NTP | — |
 | **آپدیت** | آپدیت/آپگرید با نوار پیشرفت | تشخیص نیاز به ریبوت؛ ریبوت فقط با ۶۰ ثانیه تاخیر و تایید |
+
+## میرورها و DNS های پشتیبانی‌شده
+
+- **میرور ایرانی:** آروان‌کلود (ArvanCloud)، ایران‌سرور، پیشگامان، سینداد، مبین‌هاست، دانشگاه صنعتی اصفهان، شاتل، پردیسکو، ۰-۱ کلود، آبرها، پارس‌دو، افرانت و …
+- **میرور جهانی:** Ubuntu/Debian رسمی، kernel.org، FAU، LeaseWeb، Init7، AARNet، Hetzner، OVH، Yandex، Tsinghua، USTC، Aliyun و …
+- **DNS ایرانی:** شکن، الکترو، بگذر، رادار، ۴۰۳، وانیلا، DNSPro، پیشگامان، شاتل، آسیاتک، مخابرات و …
+- **DNS جهانی:** Cloudflare، Google، Quad9، OpenDNS، ControlD، DNS.SB، Yandex، Level3، Verisign و …
+- **رجیستری Docker:** آروان‌کلود، ایران‌سرور، HaioCloud، docker.ir، HamDocker، mirror.gcr.io و …
+
+هر مورد در لحظه‌ی اجرا تست می‌شود و موارد ناسالم خودکار کنار می‌روند.
 
 ## تفاوت با پروژه‌های مشابه
 
@@ -125,6 +152,10 @@ sudo bash abrbaran-optimizer.sh --restore                # بازگردانی ه
 
 ## سوالات متداول
 
+**بهترین میرور اوبونتو در ایران کدام است؟** بسته به دیتاسنتر و اپراتور شما فرق می‌کند؛ برای همین این ابزار روی خود سرور شما سرعت واقعی را اندازه می‌گیرد و بهترین را انتخاب می‌کند.
+
+**چطور Docker را روی سرور ایران نصب کنم؟** `sudo bash abrbaran-optimizer.sh --only docker --docker` را اجرا کنید؛ از میرور سالم نصب می‌شود و میرور رجیستری هم تنظیم می‌گردد.
+
 **آیا امن است؟** همه‌ی تغییرات پشتیبان‌گیری و تایید می‌شوند و `--dry-run` اجازه می‌دهد پیش از اجرا ببینید چه می‌شود. با این حال هیچ ابزاری ریسک صفر ندارد؛ روی سرور حیاتی ابتدا snapshot بگیرید.
 
 **چرا PasswordAuthentication را غیرفعال نمی‌کنید؟** چون اگر هنوز کلید SSH نگذاشته باشید قفل می‌شوید. اسکریپت فقط هشدار و راهنما می‌دهد.
@@ -135,12 +166,13 @@ sudo bash abrbaran-optimizer.sh --restore                # بازگردانی ه
 
 ## مشارکت و امنیت
 
-Pull Request و Issue خوش‌آمد است؛ [CONTRIBUTING.md](CONTRIBUTING.md). گزارش آسیب‌پذیری: [SECURITY.md](SECURITY.md).
+Pull Request و Issue خوش‌آمد است؛ [CONTRIBUTING.md](CONTRIBUTING.md). گزارش آسیب‌پذیری: [SECURITY.md](SECURITY.md). اگر پروژه به کارتان آمد، با ⭐ از آن حمایت کنید.
 
 ## مجوز
 
 [MIT](LICENSE) — استفاده‌ی آزاد، شخصی و تجاری.
 
-<p align="center">ساخته‌شده با ❤️ توسط <a href="https://abrbaranidc.ir">ابر باران (ABR BARAN IDC)</a></p>
+<p align="center">ساخته‌شده با ❤️ توسط <a href="https://abrbaranidc.ir">ابر باران (ABR BARAN IDC)</a><br>
+<sub>کلیدواژه‌ها: بهینه ساز سرور ایران · میرور اوبونتو ایران · میرور دبیان ایران · تغییر DNS سرور · نصب داکر در ایران · فعال سازی BBR · آپدیت اوبونتو ایران · ابر باران</sub></p>
 
 </div>
