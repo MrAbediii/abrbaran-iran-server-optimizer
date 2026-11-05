@@ -11,7 +11,7 @@
 #   License: MIT   ·   https://abrbaranidc.ir
 # =============================================================================
 
-SCRIPT_VERSION="4.0.0"
+SCRIPT_VERSION="4.0.1"
 PROJECT_URL="https://github.com/MrAbediii/abrbaran-iran-server-optimizer"
 
 usage() {
@@ -227,7 +227,7 @@ SPIN_PROGRESS_FN=""
 SPIN_QUIET=false
 with_spinner() {
   local msg="$1"; shift
-  local pid i=0 start=$SECONDS rc suffix="" last=-100 prog cur tot pct fill bar="" el
+  local pid i=0 start=$SECONDS rc suffix="" last=-100 prog cur tot pct fill bar="" ibar pos el
   SPIN_OUT=$(mktemp "$TMPD/spin.XXXXXX")
   "$@" >"$SPIN_OUT" 2>&1 &
   pid=$!
@@ -247,7 +247,12 @@ with_spinner() {
           suffix=$("$SPIN_SUFFIX_FN" "$SPIN_OUT" 2>/dev/null)
         fi
       fi
-      printf '\r\033[K  %s%s%s %s%s  %s%ds%s  %s%s%s' "$C_ACC" "${SPIN_FRAMES[i % ${#SPIN_FRAMES[@]}]}" "$C_RESET" "$msg" "$bar" "$C_GRAY" "$((SECONDS - start))" "$C_RESET" "$C_GRAY" "$suffix" "$C_RESET" >&3
+      ibar="$bar"
+      if [ -z "$ibar" ]; then   # پیشرفت قابل‌محاسبه نیست → نوار «در حال کار»
+        pos=$((i % 34)); [ "$pos" -ge 17 ] && pos=$((34 - pos))
+        ibar="  ${C_GRAY}$(rep "$B_EMPTY" "$pos")${C_ACC}$(rep "$B_FULL" 3)${C_GRAY}$(rep "$B_EMPTY" $((17 - pos)))${C_RESET}"
+      fi
+      printf '\r\033[K  %s%s%s %s%s  %s%ds%s  %s%s%s' "$C_ACC" "${SPIN_FRAMES[i % ${#SPIN_FRAMES[@]}]}" "$C_RESET" "$msg" "$ibar" "$C_GRAY" "$((SECONDS - start))" "$C_RESET" "$C_GRAY" "$suffix" "$C_RESET" >&3
       i=$((i + 1)); sleep 0.12
     done
     printf '\r\033[K' >&3
@@ -2001,6 +2006,49 @@ is_container() { local v; v=$(systemd-detect-virt -c 2>/dev/null); [ -n "$v" ] &
 has_systemd() { [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; }
 svc_reload() { local s; for s in "$@"; do systemctl reload "$s" >/dev/null 2>&1 && return 0; done; return 1; }
 
+# نوار پیشرفت واقعی نصب بسته (apt: Get/Unpacking/Setting up — dnf/yum: «n/m»)
+PKG_TOTAL=0
+pkg_progress() { # cur|total|برچسب
+  local f="$1" g u s last stage="" pkg="" cur n m
+  case "$PKG_MGR" in
+    apt)
+      g=$(grep -c '^Get:' "$f" 2>/dev/null); u=$(grep -c '^Unpacking' "$f" 2>/dev/null); s=$(grep -c '^Setting up' "$f" 2>/dev/null)
+      last=$(grep -E '^(Get:|Unpacking |Setting up |Processing triggers)' "$f" 2>/dev/null | tail -n1)
+      case "$last" in
+        Get:*)        stage="دریافت";  pkg=$(awk '{print $5}' <<<"$last") ;;
+        Unpacking*)   stage="بازکردن"; pkg=$(awk '{print $2}' <<<"$last") ;;
+        Setting*)     stage="نصب";     pkg=$(awk '{print $3}' <<<"$last") ;;
+        Processing*)  stage="اجرای trigger"; pkg=$(awk '{print $4}' <<<"$last") ;;
+      esac
+      cur=$((g + u + s)); [ $((u + s)) -gt 0 ] && cur=$((PKG_TOTAL + u + s))
+      printf '%s|%s|%s %s' "$cur" "$((PKG_TOTAL * 3))" "$stage" "${pkg:0:26}" ;;
+    dnf|yum)
+      last=$(grep -E '(Installing|Upgrading|Updating|Verifying|Running scriptlet|Preparing)' "$f" 2>/dev/null | tail -n1 | tr -d '\r')
+      if [[ "$last" =~ ([0-9]+)/([0-9]+)[[:space:]]*$ ]]; then
+        n=${BASH_REMATCH[1]}; m=${BASH_REMATCH[2]}
+        printf '%s|%s|%s' "$n" "$m" "$(awk '{print $3}' <<<"$last" | cut -c1-30)"
+      else printf '0|0|'; fi ;;
+    *) printf '0|0|' ;;
+  esac
+}
+pkg_inst_total() { # تعداد بسته‌هایی که نصب می‌شوند (فقط apt؛ برای بقیه 0 = نوار «در حال کار»)
+  local n=0
+  [ "$PKG_MGR" = apt ] && n=$(apt_run 60 -s install -y "$@" 2>/dev/null | grep -c '^Inst')
+  echo "${n:-0}"
+}
+run_pkgbar() { # msg cmd...
+  local msg="$1"; shift
+  SPIN_PROGRESS_FN=pkg_progress; SPIN_SUFFIX_FN=""
+  with_spinner "$msg" "$@"; local rc=$?
+  SPIN_PROGRESS_FN=""
+  return $rc
+}
+install_pkgs_bar() { # msg pkg...
+  local msg="$1"; shift
+  PKG_TOTAL=$(pkg_inst_total "$@"); PKG_TOTAL=${PKG_TOTAL:-0}
+  run_pkgbar "$msg" tools_install_run "$@"
+}
+
 # اسپینر با برچسب زنده (آخرین خط خروجی دستور)
 tail_suffix() { tail -n1 "$1" 2>/dev/null | tr -d '\r' | cut -c1-44; }
 run_spin() { # msg cmd...
@@ -2149,7 +2197,7 @@ tools_install_run() {
   case "$PKG_MGR" in
     apt)
       apt_lists_empty && apt_run 120 update -qq >/dev/null 2>&1
-      apt_run 900 install -y -qq -o DPkg::Lock::Timeout=60 "$@" ;;
+      apt_run 900 install -y --no-install-recommends -o Dpkg::Use-Pty=0 -o DPkg::Lock::Timeout=60 "$@" ;;
     dnf)    timeout 900 dnf install -y "$@" ;;
     yum)    timeout 900 yum install -y "$@" ;;
     zypper) timeout 900 zypper --non-interactive install "$@" ;;
@@ -2157,14 +2205,25 @@ tools_install_run() {
     pacman) timeout 900 pacman -S --noconfirm --needed "$@" ;;
   esac
 }
+ESSENTIALS=()
+set_essentials() {
+  case "$PKG_MGR" in
+    apt)       ESSENTIALS=(curl wget ca-certificates gnupg git nano unzip zip jq rsync lsof tmux htop ncdu net-tools bash-completion mtr-tiny) ;;
+    dnf|yum)   ESSENTIALS=(curl wget ca-certificates gnupg2 git nano unzip zip jq rsync lsof tmux htop ncdu net-tools bash-completion mtr) ;;
+    zypper|apk|pacman) ESSENTIALS=(curl wget ca-certificates git nano unzip zip jq rsync lsof tmux htop ncdu bash-completion) ;;
+    *) ESSENTIALS=(); return 1 ;;
+  esac
+}
+# فهرست بسته‌ها را در یک خط جدا (LTR) چاپ می‌کند تا کنار متن فارسی به‌هم نریزد
+print_pkg_list() { # عنوان pkg...
+  local title="$1"; shift
+  note "$title"
+  printf '      %s%s%s\n' "$C_BOLD" "$*" "$C_RESET" >&3
+}
 install_essentials() {
   local want=() missing=() p cnt=0
-  case "$PKG_MGR" in
-    apt)       want=(curl wget ca-certificates gnupg git nano unzip zip jq rsync lsof tmux htop ncdu net-tools bash-completion mtr-tiny) ;;
-    dnf|yum)   want=(curl wget ca-certificates gnupg2 git nano unzip zip jq rsync lsof tmux htop ncdu net-tools bash-completion mtr) ;;
-    zypper|apk|pacman) want=(curl wget ca-certificates git nano unzip zip jq rsync lsof tmux htop ncdu bash-completion) ;;
-    *) warn "مدیر بسته‌ی «${PKG_MGR}» پشتیبانی نمی‌شود."; set_st TOOLS skip "پشتیبانی نمی‌شود"; return ;;
-  esac
+  set_essentials || { warn "مدیر بسته‌ی «${PKG_MGR}» پشتیبانی نمی‌شود."; set_st TOOLS skip "پشتیبانی نمی‌شود"; return; }
+  want=("${ESSENTIALS[@]}")
   for p in "${want[@]}"; do pkg_installed "$p" || missing+=("$p"); done
   if [ "$PKG_MGR" = apt ] && [ ${#missing[@]} -gt 0 ]; then
     apt_lists_empty && [ "$DRY_RUN" != true ] && apt_run 120 update -qq >/dev/null 2>&1
@@ -2172,9 +2231,9 @@ install_essentials() {
     missing=("${avail[@]}")
   fi
   if [ ${#missing[@]} -eq 0 ]; then ok "همه‌ی ابزارهای کاربردی از قبل نصب‌اند."; set_st TOOLS ok "از قبل کامل بود"; return; fi
-  note "برای نصب: ${missing[*]}"
+  print_pkg_list "ابزارهایی که نصب می‌شوند (${#missing[@]} بسته):" "${missing[@]}"
   if [ "$DRY_RUN" = true ]; then set_st TOOLS skip "dry-run: ${#missing[@]} بسته"; return; fi
-  if run_spin "نصب ${#missing[@]} ابزار کاربردی" tools_install_run "${missing[@]}"; then
+  if install_pkgs_bar "نصب ${#missing[@]} ابزار کاربردی" "${missing[@]}"; then
     set_st TOOLS ok "${#missing[@]} بسته نصب شد"
   else
     # یکی‌یکی؛ نبودِ یک بسته نباید بقیه را خراب کند
@@ -2187,6 +2246,8 @@ install_essentials() {
 # =============================================================================
 #  منابع سیستم: hosts، سوآپ، limits، journald، TRIM
 # =============================================================================
+SWAP_MB=0
+swap_progress() { printf '%s|%s|%s' "$(( $(stat -c %s /swapfile 2>/dev/null || echo 0) / 1048576 ))" "$SWAP_MB" "MB"; }
 make_swapfile() { # size_mb
   local mb="$1"
   fallocate -l "${mb}M" /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count="$mb" status=none || return 1
@@ -2215,7 +2276,10 @@ sys_swap() {
   if [ "${free_mb:-0}" -lt $((size_mb + 3072)) ]; then warn "فضای دیسک برای سوآپ ${size_mb}MB کافی نیست."; return 1; fi
   if [ "$DRY_RUN" = true ]; then note "(dry-run) سوآپ ${size_mb}MB ساخته می‌شد."; return 1; fi
   bk_save /etc/fstab fstab
-  if with_spinner "ساخت سوآپ ${size_mb}MB" make_swapfile "$size_mb"; then
+  SWAP_MB=$size_mb; SPIN_PROGRESS_FN=swap_progress
+  with_spinner "ساخت سوآپ ${size_mb}MB" make_swapfile "$size_mb"; local swrc=$?
+  SPIN_PROGRESS_FN=""
+  if [ "$swrc" -eq 0 ]; then
     grep -qs '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
     mkdir -p /etc/sysctl.d
     grep -qs 'vm.swappiness' /etc/sysctl.d/99-abrbaran-tuning.conf 2>/dev/null || echo 'vm.swappiness = 10' >> /etc/sysctl.d/99-abrbaran-tuning.conf
@@ -2437,8 +2501,9 @@ docker_do_install() { # 0=نصب شد
       while IFS='|' read -r sp ms name base code; do
         [ -z "$name" ] && continue
         tried=$((tried + 1)); [ "$tried" -gt 3 ] && break
-        if [ "$PKG_MGR" = apt ]; then run_spin "نصب Docker از «${name}»" docker_install_apt "$base" "$code"; rc=$?
-        else run_spin "نصب Docker از «${name}»" docker_install_rpm "$base" "$code"; rc=$?; fi
+        PKG_TOTAL=9
+        if [ "$PKG_MGR" = apt ]; then run_pkgbar "نصب Docker از «${name}»" docker_install_apt "$base" "$code"; rc=$?
+        else run_pkgbar "نصب Docker از «${name}»" docker_install_rpm "$base" "$code"; rc=$?; fi
         if [ "$rc" -eq 0 ] && command -v docker >/dev/null 2>&1; then
           DOCKER_SRC="$name"; docker_enable_service && return 0
           warn "Docker نصب شد ولی سرویس بالا نیامد."; return 0
@@ -2452,7 +2517,8 @@ docker_do_install() { # 0=نصب شد
   fi
   [ "$DRY_RUN" = true ] && return 1
   info "تلاش با بسته‌ی خودِ توزیع (از مخزن سیستم) ..."
-  if run_spin "نصب Docker از مخزن ${OS_ID}" docker_install_distro && command -v docker >/dev/null 2>&1; then
+  PKG_TOTAL=8
+  if run_pkgbar "نصب Docker از مخزن ${OS_ID}" docker_install_distro && command -v docker >/dev/null 2>&1; then
     DOCKER_SRC="مخزن ${OS_ID}"; docker_enable_service; return 0
   fi
   return 1
@@ -2671,7 +2737,7 @@ firewall_setup() {
   note "بقیه‌ی ورودی‌ها مسدود می‌شود؛ خروجی آزاد است."
   if ! confirm "فایروال UFW با این قوانین فعال شود؟" "$([ "$DO_FIREWALL" = true ] && echo yes)" n; then info "رد شد. (فعال‌سازی خودکار: --firewall)"; set_st FW skip "رد شد"; return; fi
   if [ "$DRY_RUN" = true ]; then set_st FW skip "dry-run"; return; fi
-  if ! command -v ufw >/dev/null 2>&1; then run_spin "نصب ufw" tools_install_run ufw || { err "نصب ufw ممکن نشد."; set_st FW err "نصب ufw ناموفق"; return; }; fi
+  if ! command -v ufw >/dev/null 2>&1; then install_pkgs_bar "نصب ufw" ufw || { err "نصب ufw ممکن نشد."; set_st FW err "نصب ufw ناموفق"; return; }; fi
   ufw default deny incoming >/dev/null 2>&1; ufw default allow outgoing >/dev/null 2>&1
   for p in $sp; do ufw limit "${p}/tcp" >/dev/null 2>&1; done
   for t in $plan_t; do case " $sp " in *" $t "*) ;; *) ufw allow "${t}/tcp" >/dev/null 2>&1 ;; esac; done
@@ -2699,7 +2765,7 @@ fail2ban_setup() {
   fi
   if [ "$DRY_RUN" = true ]; then note "(dry-run) fail2ban نصب می‌شد."; set_st F2B skip "dry-run"; return; fi
   if ! command -v fail2ban-client >/dev/null 2>&1; then
-    run_spin "نصب fail2ban" tools_install_run fail2ban || { err "نصب fail2ban ممکن نشد."; set_st F2B err "نصب ناموفق"; return; }
+    install_pkgs_bar "نصب fail2ban" fail2ban || { err "نصب fail2ban ممکن نشد."; set_st F2B err "نصب ناموفق"; return; }
   fi
   [ "$PKG_MGR" = apt ] && pkg_installed python3-systemd || { [ "$PKG_MGR" = apt ] && pkg_install python3-systemd; }
   ports=$(ssh_ports | tr -s ' ' | sed 's/ *$//; s/ /,/g')
@@ -2907,7 +2973,8 @@ main() {
 
   if mod_on tools; then
     step "ابزارهای کاربردی سرور"
-    if confirm "ابزارهای پرکاربرد (git، htop، tmux، jq، ncdu، ...) نصب شوند؟" "$xf" y; then install_essentials
+    set_essentials && print_pkg_list "ابزارهای کاربردی (${#ESSENTIALS[@]} مورد):" "${ESSENTIALS[@]}"
+    if confirm "همه‌ی ابزارهای بالا نصب شوند؟" "$xf" y; then install_essentials
     else info "رد شد."; set_st TOOLS skip "رد شد"; fi
   fi
 
