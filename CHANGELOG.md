@@ -2,6 +2,23 @@
 
 All notable changes are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.0.4] — 2026-11-05
+
+### Fixed
+- apt/dpkg could freeze at the very end of an install/upgrade ("Processing triggers for debianutils") on some servers. apt now runs with `timeout --foreground`, stdin from `/dev/null` and `Dpkg::Use-Pty=0`, so it can never be stopped by terminal signals.
+- Watchdog: if an operation prints nothing for 60 seconds, process state is written to the log and any stopped apt/dpkg process is resumed.
+
+## [4.0.3] — 2026-11-05
+
+### Added
+- Beginner-friendly **guide** printed before each sensitive question (tools, system resources, Docker, SSH tuning, UFW firewall, Fail2ban, system update): what it does, the risk, the commands you will need afterwards and how to undo it. Hidden with `-y`.
+
+## [4.0.2] — 2026-11-05
+
+### Fixed
+- Progress bar for apt upgrade/install now reflects the **whole** operation (taken from apt's own status: download 0–40%, install 40–100%) instead of reaching 100% after the first package.
+- Slow `man-db` trigger no longer stalls installs/upgrades (auto-update of the man index is deferred to its timer).
+
 ## [4.0.1] — 2026-11-05
 
 ### Added
